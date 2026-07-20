@@ -14,7 +14,9 @@ modes, picked per-model via the ``qwen3_mode`` field in ``models.json``:
   ``voice`` field is the speaker name (Vivian / Serena / Uncle_Fu / Dylan
   / Eric / Ryan / Aiden / Ono_Anna / Sohee). The OpenAI ``instructions``
   field carries emotion / style cues ("Speak angrily"). 1.7B honours it;
-  0.6B silently ignores it (upstream limitation).
+  0.6B silently ignores it (checkpoint limitation — the library nullifies
+  the parameter internally). Talkies logs a WARNING when instructions are
+  provided to a 0.6B-CustomVoice model.
 * ``voice_design`` — single-model NL voice description. The ``voice``
   field is ignored (sentinel ``"design"``); the OpenAI ``instructions``
   field carries the voice description ("A warm, friendly young female
@@ -309,6 +311,14 @@ class Qwen3TTSBackend:
                     f"unknown speaker {voice!r} for model {self.model_id!r}; "
                     f"available: {list(_CUSTOM_VOICE_SPEAKERS)}"
                 )
+            if instructions and "0.6b" in self.model_id.lower():
+                self._log.warning(
+                    "model %s (0.6B-CustomVoice) does not support the "
+                    "`instructions` field — the checkpoint silently ignores it. "
+                    "Switch to qwen3-tts-1.7b-custom for instruction-following "
+                    "in custom-voice mode.",
+                    self.model_id,
+                )
             model = await self.get_model()
             async with self._lock:
                 result = await asyncio.to_thread(
@@ -390,6 +400,14 @@ class Qwen3TTSBackend:
                 raise ValueError(
                     f"unknown speaker {voice!r} for model {self.model_id!r}; "
                     f"available: {list(_CUSTOM_VOICE_SPEAKERS)}"
+                )
+            if instructions and "0.6b" in self.model_id.lower():
+                self._log.warning(
+                    "model %s (0.6B-CustomVoice) does not support the "
+                    "`instructions` field — the checkpoint silently ignores it. "
+                    "Switch to qwen3-tts-1.7b-custom for instruction-following "
+                    "in custom-voice mode.",
+                    self.model_id,
                 )
             worker_kwargs = {
                 "method": "custom_voice",
