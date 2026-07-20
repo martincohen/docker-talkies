@@ -200,7 +200,7 @@ Mode is implicit in the model slug — the OpenAI wire format stays pure (`model
 | Mode | Slugs | What `voice` means | What `instructions` means |
 |---|---|---|---|
 | **base** (voice cloning) | `qwen3-tts-0.6b`, `qwen3-tts-1.7b` | Path of a reference `.wav` under the voices dirs (with `.wav` stripped) | Optional style hint (passed to the model as `instruct`) |
-| **custom_voice** (preset speakers) | `qwen3-tts-0.6b-custom`, `qwen3-tts-1.7b-custom` | One of the 9 preset speaker names (see below) | Emotion / style cue — *1.7B honours it; 0.6B silently drops it (upstream limitation)* |
+| **custom_voice** (preset speakers) | `qwen3-tts-0.6b-custom`, `qwen3-tts-1.7b-custom` | One of the 9 preset speaker names (see below) | Emotion / style cue — *1.7B honours it; 0.6B drops it (checkpoint limitation — talkies logs a WARNING)* |
 | **voice_design** (NL voice description) | `qwen3-tts-1.7b-design` | Ignored — sentinel `"design"` | **Required.** Natural-language description of the voice ("A warm, friendly young female voice with a cheerful tone"). Empty → 400. |
 
 **`base` mode — voice cloning.** The voice catalog comes from two on-disk dirs:
@@ -224,7 +224,7 @@ Each `<name>.wav` should have a sibling `<name>.txt` (transcript of what the spe
 | `Ono_Anna` | F | Japanese | Playful, light nimble timbre |
 | `Sohee` | F | Korean | Warm with rich emotion |
 
-The 1.7B variant honours the `instructions` field as an emotion / style cue ("Speak angrily.", "Sound enthusiastic."). The 0.6B variant has no instruction-prompt input — `instructions` is silently dropped by `faster-qwen3-tts` upstream.
+The 1.7B variant honours the `instructions` field as an emotion / style cue ("Speak angrily.", "Sound enthusiastic."). The 0.6B variant has no instruction-prompt input — `faster-qwen3-tts` nullifies `instruct` internally for the 0.6B checkpoint; talkies logs a WARNING so the caller knows their cue was discarded.
 
 **`voice_design` mode — synthesize a voice from text.** The model invents a voice that matches a natural-language description carried in `instructions`. There's no preset catalog; `GET /v1/audio/voices` returns the single sentinel `["design"]` so OpenAI clients with strict catalog validation don't choke. Calls without `instructions` (or with an empty / whitespace-only string) get 400. Two consecutive calls with the same `instructions` won't produce bit-identical audio — sampling is stochastic.
 
@@ -256,7 +256,7 @@ A short list of things that look like they might work but don't, so you don't wa
 | **PCM streaming on Kokoro** | Not supported | Kokoro backends synthesize the full clip before returning regardless of `response_format`. PCM-chunked HTTP/1.1 streaming is Qwen3-TTS-only. |
 | **TTS `instructions` field on Kokoro** | Accepted, ignored | Both kokoro slugs take no instruction-prompt input — `voice` is the only style control. Accepted for OpenAI parity, silently dropped. |
 | **TTS `instructions` field on Qwen3-TTS `base` mode** | Honoured | Passed through as `instruct` on `generate_voice_clone`. Best with an ICL reference (sibling `.txt` transcript); without one the backend falls back to x-vector-only synthesis and logs a warning. |
-| **TTS `instructions` field on `qwen3-tts-0.6b-custom`** | Accepted, dropped | `faster-qwen3-tts` upstream forces `instruct=None` on the 0.6B CustomVoice checkpoint — the field is accepted at the wire but the model never sees it. Use `qwen3-tts-1.7b-custom` if you need emotion control on preset speakers. |
+| **TTS `instructions` field on `qwen3-tts-0.6b-custom`** | Accepted, dropped + WARNING | `faster-qwen3-tts` nullifies `instruct` internally for the 0.6B CustomVoice checkpoint — the field is accepted at the wire but the model never sees it. Talkies logs a WARNING so the caller knows. Use `qwen3-tts-1.7b-custom` if you need emotion control on preset speakers. |
 | **TTS `instructions` field on `qwen3-tts-1.7b-custom`** | Honoured | Carries emotion / style ("Speak angrily.") through to `generate_custom_voice`. |
 | **TTS `instructions` field on `qwen3-tts-1.7b-design`** | **Required** | Carries the natural-language voice description. Empty / whitespace-only → 400. |
 | **TTS `speed` on Qwen3-TTS (any mode)** | Accepted, ignored | Qwen3-TTS has no speed-control parameter across base / custom_voice / voice_design. Validated against `[0.25, 4.0]` for compatibility, then dropped. Kokoro applies `speed` as documented. |
